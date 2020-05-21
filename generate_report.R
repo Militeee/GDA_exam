@@ -1,21 +1,9 @@
-require(argparse)
-require(RPostgreSQL)
-require(tidyverse)
-require(glue)
-require(kableExtra)
-require(rmarkdown)
-require(cowplot)
-require(gtools)
-require(scales)
-require(formattable)
-
-
-
+require(argparse, quietly = T)
 
 ## SQL queries
 
 alter_range = "alter table {table}
-               add column range int8range;"
+               add column range int8range"
 
 range_update = "update {table} set \"range\"= subquery.range
                 from (
@@ -24,13 +12,13 @@ range_update = "update {table} set \"range\"= subquery.range
                   cast(\"end\" as INT), '[]') as range
                   from {table}
                   ) as subquery
-                where (\"chr\", \"start\", \"end\") = subquery.tp;"
+                where (\"chr\", \"start\", \"end\") = subquery.tp"
 
 overlap_syndrome = "select \"sample id\", \"sindrome\", st.\"chr\" , st.\"start\", st.\"end\", s.\"start\" as syn_start, s.\"end\" as syn_end,
                     round(((upper(st.range * s.range) - lower(st.range * s.range))::numeric / (upper(st.range) - lower(st.range)) * 100)) as \"perc overlap\",
                     \"classe\", \"cnv value\", \"comment\"
                     from syndrome as s inner join {sample_table} as st on s.chr = st.chr
-                    where st.range && s.range and st.\"cnv conf\" >= {qcoff}  and ({filter}) ;
+                    where st.range && s.range and st.\"cnv conf\" >= {qcoff}  and ({filter})
                   "
 
 gene_annotation = "
@@ -58,26 +46,41 @@ overlap_OMIM = "
                   where {filter}
                "
 
+get_sample = "
+              select *
+              from {sample_table}
+            "
+
 ## Parsing arguments
 
 parser <- ArgumentParser()
 
-parser$add_argument("-db", "--database", type= "character")
+parser$add_argument("-db", "--database", type= "character", help = "Name of the Postgres database where you want to insert/read annot tables")
 parser$add_argument("-dbh", "--database-host",type= "character")
 parser$add_argument("-dbp", "--database-port",type= "character")
 parser$add_argument("-dbu", "--database-user",type= "character")
 parser$add_argument("-dbpw", "--database-password", type= "character")
 parser$add_argument("--quality-cutoff", type="integer", default=30)
-parser$add_argument("--annotation-dir", type= "character", default ="annot")
-parser$add_argument("--delim", type= "character", default =",")
-parser$add_argument("-f","--filename", type= "character")
-parser$add_argument("-o","--out-prefix", type= "character", default = "output")
-parser$add_argument("--do-not-force-annot", action="store_true", default = FALSE)
-parser$add_argument("-stn","--sample-table-name", type = "character", default = "sample_table")
-parser$add_argument("--do-not-create-df", action="store_true", default = FALSE )
-parser$add_argument("--no-filter-diploid-X", action="store_true", default = FALSE )
+parser$add_argument("--annotation-dir", type= "character", default ="annot", help = "Directory of annotation table")
+parser$add_argument("--delim", type= "character", default =",", help = "Separator for annotation tables")
+parser$add_argument("-f","--filename", type= "character", help= "Input file, needs to be tab separated")
+parser$add_argument("-o","--out-prefix", type= "character", default = "output", help = "Output prefix to be appendend to the two output files")
+parser$add_argument("--do-not-force-annot", action="store_true", default = FALSE, help = "If selected the script will not insert all the tables but only the one different from those present in the Postgres DB")
+parser$add_argument("-stn","--sample-table-name", type = "character", default = "sample_table", help = "Name of sample table in the df")
+parser$add_argument("--do-not-create-df", action="store_true", default = FALSE , help = "Don't write or create any table on the database, just read")
+parser$add_argument("--no-filter-diploid-X", action="store_true", default = FALSE , help = "Do not filter samples with CNV value = 2 on the X chromosome")
 
 args <- parser$parse_args()
+
+require(RPostgreSQL, quietly = T)
+require(tidyverse, quietly = T)
+require(glue, quietly = T)
+require(kableExtra, quietly = T)
+require(rmarkdown, quietly = T)
+require(cowplot, quietly = T)
+require(gtools, quietly = T)
+require(scales, quietly = T)
+require(formattable, quietly = T)
 
 ## Connecting to the db
 
@@ -92,11 +95,11 @@ nms <- sub("\\..*","",nms)
 
 tables <- dbListTables(con)
 
-tables <- setdiff(nms, tables)
+tables1 <- setdiff(nms, tables)
 
 print(tables)
 
-if(!args$do_not_create_df & (length(tables) != 0 | !args$do_not_force_annot)){
+if(!args$do_not_create_df & (length(tables1) != 0 | !args$do_not_force_annot)){
 
   # create tables for the annotations
   for(i in seq_along(files)){
@@ -130,14 +133,19 @@ quality_cutoff <- paste(args$quality_cutoff)
 
 ## Processing sample file
 
-sample_file <- read_delim(args$filename, delim = "\t")
-colnames(sample_file) <- tolower(colnames(sample_file))
+tables2 <- setdiff(args$sample_table_name, tables)
 
-dbWriteTable(con, args$sample_table_name, sample_file, overwrite = T)
+if(!args$do_not_create_df & (length(tables2) != 0 | !args$do_not_force_annot)){
+  sample_file <- read_delim(args$filename, delim = "\t")
+  colnames(sample_file) <- tolower(colnames(sample_file))
 
-dbExecute(con, glue(alter_range, table = args$sample_table_name))
-dbExecute(con, glue(range_update, table = args$sample_table_name))
+  dbWriteTable(con, args$sample_table_name, sample_file, overwrite = T)
 
+  dbExecute(con, glue(alter_range, table = args$sample_table_name))
+  dbExecute(con, glue(range_update, table = args$sample_table_name))
+} else {
+  sample_file <- dbGetQuery(con, glue(get_sample, sample_table = args$sample_table_name))
+}
 
 ## Calculating overlappings
 
