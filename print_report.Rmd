@@ -1,0 +1,62 @@
+---
+title: "CNV report"
+output: html_document
+---
+
+
+```{r printing, echo=FALSE, warning=FALSE, results = 'asis', message=FALSE}
+require(tidyverse, quietly = T)
+require(kableExtra, quietly = T, warn.conflicts = F)
+require(gtools,  quietly = T)
+require(formattable,  quietly = T)
+require(knitr, quietly = T)
+
+
+load("tmp.RData")
+
+annot_list <- list(syndrome = syndrome_overlaps, ddg2p = annotated_ddg2p, 
+                omim = annotated_morbidmap, clingen = annotated_clingen)
+annot_string <- c("syndrome", "ddg2p", "omim", "clingen")
+
+for(sample in mixedsort(unique(sample_file$`sample id`), decreasing = T)){
+  cat(paste0("**",sample,"**"), sep = "")
+  cat("  \n")  
+  annot_sample <- lapply(annot_list, function(x) {x %>% filter(`sample id` == sample)})
+  annot_mask <- sapply(annot_sample, function(x) {nrow(x) != 0})
+  if(sum(annot_mask) == 0){
+    cat(paste0("SNP does not intersect with annotation datasets"), sep = "")
+    cat("  \n") 
+    cat("  \n") 
+
+    next()
+
+  } else {
+    cat(paste0("SNP does intersect with genes/segments in ", paste(names(annot_sample[annot_mask]),collapse = ",")),
+        sep = "")
+
+  
+  }
+  
+  annot_sample <- annot_sample[annot_mask]
+  
+  
+  for(i in seq_along(annot_sample)){
+    
+   cat("  \n") 
+   cat("  \n") 
+   cat(paste0("**",toupper(names(annot_sample)[i]) , "**"))
+   kb <-  annot_sample[[i]]  %>% mutate(`cnv value` = color_tile("lightblue", "red") (`cnv value`)) %>% 
+        {if("perc overlap" %in% colnames(annot_sample[[i]])) mutate(., `perc overlap`=color_tile("#DeF7E9", "#71CA97")(percent(`perc overlap`) / 100 , d = 0))} %>% kable(escape = F,format = "html", align = "l") %>% 
+        kable_styling(bootstrap_options = c("striped", "hover")) %>% 
+  scroll_box(width = "100%") 
+   
+   print(kb)
+      
+  }
+  
+}
+
+
+```
+
+
