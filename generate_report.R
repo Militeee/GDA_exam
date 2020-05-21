@@ -71,7 +71,8 @@ parser$add_argument("--quality-cutoff", type="integer", default=30)
 parser$add_argument("--annotation-dir", type= "character", default ="annot")
 parser$add_argument("--delim", type= "character", default =",")
 parser$add_argument("-f","--filename", type= "character")
-parser$add_argument("--force-annot", action="store_true", default = TRUE)
+parser$add_argument("-o","--out-prefix", type= "character", default = "output")
+parser$add_argument("--do-not-force-annot", action="store_true", default = FALSE)
 parser$add_argument("-stn","--sample-table-name", type = "character", default = "sample_table")
 parser$add_argument("--do-not-create-df", action="store_true", default = FALSE )
 parser$add_argument("--no-filter-diploid-X", action="store_true", default = FALSE )
@@ -91,9 +92,11 @@ nms <- sub("\\..*","",nms)
 
 tables <- dbListTables(con)
 
-tables <- setdiff(tables, nms)
+tables <- setdiff(nms, tables)
 
-if(!args$do_not_create_df & (length(tables) != 0 | !args$force_annot)){
+print(tables)
+
+if(!args$do_not_create_df & (length(tables) != 0 | !args$do_not_force_annot)){
 
   # create tables for the annotations
   for(i in seq_along(files)){
@@ -158,25 +161,26 @@ save(sample_file, syndrome_overlaps, annotated_ddg2p,
 
 # DF for plotting the percentage of the different CNVs
 
-plt_data1 <- sample_file %>% {if(!args$no_filter_diploid_X) filter(., `cnv value` != 2)} %>% group_by(`cnv value`) %>%
+plt_data1 <- sample_file %>% {if(!args$no_filter_diploid_X) filter(., `cnv value` != 2) else .} %>% group_by(`cnv value`) %>%
               summarize(counts = n()) %>% arrange(counts) %>% mutate(freq = counts/sum(counts), y_pos = cumsum(freq) - 0.4*freq)
 
 # DF for plotting the percentage of amplifications and deletions
 
-plt_data2 <- sample_file %>% {if(!args$no_filter_diploid_X) filter(., `cnv value` != 2)}  %>%
-                mutate(del_dup = if_else(`cnv value` > 2, "ampl", "del"))%>% group_by(del_dup) %>%
-                  summarize(counts = n()) %>% arrange(counts) %>%
-                    mutate(freq = counts/sum(counts), y_pos = cumsum(freq) - 0.4*freq)
+plt_data2 <- sample_file %>% {if(!args$no_filter_diploid_X) filter(., `cnv value` != 2) else .}  %>%
+                mutate(del_dup = if_else(`cnv value` > 2, "ampl", "del")) %>%
+                  mutate(del_dup = if_else(`cnv value` == 2, "norm", del_dup)) %>% group_by(del_dup) %>%
+                    summarize(counts = n()) %>% arrange(counts) %>%
+                     mutate(freq = counts/sum(counts), y_pos = cumsum(freq) - 0.5*cumsum(freq))
 
 # DF for plotting the chrs prevalence of CNVs
 
-plt_data3 <- sample_file %>% {if(!args$no_filter_diploid_X) filter(., `cnv value` != 2)} %>%
+plt_data3 <- sample_file %>% {if(!args$no_filter_diploid_X) filter(., `cnv value` != 2) else .} %>%
               group_by(chr) %>% summarize(counts = n())
 
 plt_data3$chr <- factor(plt_data3$chr, levels = mixedsort(plt_data3$chr))
 
 
-sample_file_tmp <- sample_file %>% {if(!args$no_filter_diploid_X) filter(., `cnv value` != 2)}
+sample_file_tmp <- sample_file %>% {if(!args$no_filter_diploid_X) filter(., `cnv value` != 2) else .}
 
 # DF for plotting the overlap sample ids and datasets
 
@@ -195,11 +199,11 @@ plt_data4 <- plt_data4 %>% reshape2::melt()
 
 pie_1 <- ggplot(data = plt_data1, aes(x = "", y = freq, fill = paste(`cnv value`))) + geom_bar(width = 1, stat = "identity") +
           coord_polar("y", start=0)+ ggtitle("Perc of CNVs in the table") + scale_fill_discrete( "CNV value") + ylab("") + xlab("") +
-            theme_minimal()+ geom_text(aes(y = y_pos, label = percent(freq)), size=4) + theme(axis.text.x = element_blank())
+            theme_minimal() + theme(axis.text.x = element_blank())
 
 pie_2 <- ggplot(data = plt_data2, aes(x = "", y = freq, fill = paste(del_dup))) + geom_bar(width = 1, stat = "identity") +
           coord_polar("y", start=0)+ ggtitle("Perc of amp/del in the table") + scale_fill_discrete( "CNV value") + ylab("") + xlab("") +
-            theme_minimal()+ geom_text(aes(y = y_pos, label = percent(freq)), size=4) + theme(axis.text.x = element_blank())
+            theme_minimal() + theme(axis.text.x = element_blank())
 
 
 hist_1 <- ggplot(data = plt_data3, aes(x = chr, y = counts/sum(counts) * 100, fill = chr)) +
@@ -219,11 +223,11 @@ cowplot::plot_grid(
   hist_1,
   hist_2,
   nrow = 2, ncol = 2
-) %>% ggsave(filename = "summary_plots.pdf", device = "pdf")
+) %>% ggsave(filename = paste0(args$out_prefix,"_summary_plots.pdf"), device = "pdf", width = 10, height = 10)
 
 ## Render the report
 
-rmarkdown::render("print_report.Rmd", output_file = "CNV_report.html")
+rmarkdown::render("print_report.Rmd", output_file = paste0(args$out_prefix,"_CNV_report.html"))
 
 ## Remove the temporary datasets
 
