@@ -15,7 +15,7 @@ range_update = "update {table} set \"range\"= subquery.range
                 where (\"chr\", \"start\", \"end\") = subquery.tp"
 
 overlap_syndrome = "select \"sample id\", \"sindrome\", st.\"chr\" , st.\"start\", st.\"end\", s.\"start\" as syn_start, s.\"end\" as syn_end,
-                    round(((upper(st.range * s.range) - lower(st.range * s.range))::numeric / (upper(st.range) - lower(st.range)) * 100)) as \"perc overlap\",
+                    ((upper(st.range * s.range) - lower(st.range * s.range))::numeric / (upper(st.range) - lower(st.range)) * 100) as \"perc overlap\",
                     \"classe\", \"cnv value\", \"comment\"
                     from syndrome as s inner join {sample_table} as st on s.chr = st.chr
                     where st.range && s.range and st.\"cnv conf\" >= {qcoff}  and ({filter})
@@ -24,7 +24,7 @@ overlap_syndrome = "select \"sample id\", \"sindrome\", st.\"chr\" , st.\"start\
 gene_annotation = "
                    create table gene_snp_annot as (
                 	 select distinct \"sample id\",st.\"chr\", st.\"start\", st.\"end\",gn.\"gene name\" ,gn.\"start\" as gene_start, gn.\"end\" as gene_end, st.\"cnv value\",
-                	 round(((upper(st.range * gn.range) - lower(st.range * gn.range))::numeric / (upper(gn.range) - lower(gn.range)) * 100)) as \"perc overlap\",
+                	 ((upper(st.range * gn.range) - lower(st.range * gn.range))::numeric / (upper(gn.range) - lower(gn.range)) * 100) as \"perc overlap\",
                 	 st.\"comment\"
                 	 from {sample_table} as st inner join gene_annotations as gn on st.\"chr\"  = gn.\"chr\"
                 	 where st.range && gn.range and st.\"cnv conf\" >= {qcoff}
@@ -69,6 +69,8 @@ parser$add_argument("--do-not-force-annot", action="store_true", default = FALSE
 parser$add_argument("-stn","--sample-table-name", type = "character", default = "sample_table", help = "Name of sample table in the df")
 parser$add_argument("--do-not-create-df", action="store_true", default = FALSE , help = "Don't write or create any table on the database, just read")
 parser$add_argument("--no-filter-diploid-X", action="store_true", default = FALSE , help = "Do not filter samples with CNV value = 2 on the X chromosome")
+parser$add_argument("-gv","--genome-version", type= "character", default ="hg19", help = "Version of the ref [hg38 or hg19] genome to be used for gene position")
+
 
 args <- parser$parse_args()
 
@@ -90,14 +92,18 @@ con <- dbConnect(RPostgres::Postgres(), dbname = args$database, host=args$databa
 ## Make sure to not reload all the tables if the database when not neaded
 
 files <- dir(args$annotation_dir, full.names = T)
+files_no_hg <- grep(files, pattern = "hg", value = T, invert = T)
+files_hg <- grep(files, pattern = args$genome_version, value = T)
+files <- c(files_hg, files_no_hg)
 nms <- sub("(.*/)","",files)
 nms <- sub("\\..*","",nms)
+nms <- sub(paste0("_",args$genome_version),"",nms)
 
 tables <- dbListTables(con)
 
 tables1 <- setdiff(nms, tables)
 
-print(tables)
+print(files)
 
 if(!args$do_not_create_df & (length(tables1) != 0 | !args$do_not_force_annot)){
 
