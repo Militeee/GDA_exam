@@ -236,7 +236,7 @@ cowplot::plot_grid(
   pie_2,
   hist_1,
   hist_2,
-  nrow = 2, ncol = 2
+  nrow = 2, ncol = 2, align = "hv"
 ) %>% ggsave(filename = paste0(args$out_prefix,"_summary_plots.pdf"), device = "pdf", width = 10, height = 10)
 
 ## Render the report
