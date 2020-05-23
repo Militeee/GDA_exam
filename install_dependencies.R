@@ -1,7 +1,7 @@
 ## Dependencies
 
 dependencies <- c("argparse", "RPostgreSQL", "tidyverse", "glue", "kableExtra",
-                  "rmarkdown", "cowplot", "gtools", "scales", "formattable")
+                  "rmarkdown", "cowplot", "gtools", "scales", "formattable", "knitr")
 
 args = commandArgs(trailingOnly=TRUE)
 
