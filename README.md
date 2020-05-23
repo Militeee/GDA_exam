@@ -15,6 +15,7 @@ Annotation table for genes comes from BioMart GRCh37 for hg19 and GRCh38 for hg3
 Brief note on overlapping:
 
 With syndrome the overlaps are calculated as the % of the input CNV covered by the syndrome region
+
 With genes the overlaps are calculated as the % of the gene covered by the input CNV
 
 ### Basic Usage
