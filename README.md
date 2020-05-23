@@ -25,6 +25,7 @@ First of all check the dependencies.
 To list them
 
 `Rscript install_dependencies.R show `
+
 To install all the dependecies
 
 `Rscript install_dependencies.R`
