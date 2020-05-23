@@ -36,7 +36,7 @@ Next create a DB on postgresql (ex on Linux) with user postgres and no password 
 
 Then
 
-`Rscript generate_report.R -db "CNV2" -dbh "localhost" -dbp 5432 -dbu "postgres" -dbpw ""  -f 20200408_standard_cnv_report.txt`
+`Rscript generate_report.R -db "CNV" -dbh "localhost" -dbp 5432 -dbu "postgres" -dbpw ""  -f 20200408_standard_cnv_report.txt`
 
 Will produce two files names output_summary_plots.pdf with some summary plots and output_CNV_report.html with the actual report.
 
