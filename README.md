@@ -12,6 +12,8 @@ The script integrates information from 4 databases:
 
 ### Basic Usage
 
+Clone the repo
+
 First of all check the dependencies. 
 To list them
 
