@@ -14,8 +14,10 @@ The script integrates information from 4 databases:
 
 First of all check the dependencies. 
 To list them
+
 `Rscript install_dependencies.R show `
 To install all the dependecies
+
 `Rscript install_dependencies.R`
 
 Next create a DB on postgresql (ex on Linux) with user postgres and no password on our localhost and port 5432
@@ -23,6 +25,7 @@ Next create a DB on postgresql (ex on Linux) with user postgres and no password 
 `createdb CNV`
 
 Then
+
 `Rscript generate_report.R -db "CNV2" -dbh "localhost" -dbp 5432 -dbu "postgres" -dbpw ""  -f 20200408_standard_cnv_report.txt`
 
 Will produce two files names output_summary_plots.pdf with some summary plots and output_CNV_report.html with the actual report.
