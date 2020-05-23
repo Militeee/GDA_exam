@@ -247,3 +247,4 @@ rmarkdown::render("print_report.Rmd", output_file = paste0(args$out_prefix,"_CNV
 
 system("rm tmp.RData")
 
+quit()
