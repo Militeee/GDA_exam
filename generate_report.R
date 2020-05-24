@@ -103,7 +103,6 @@ tables <- dbListTables(con)
 
 tables1 <- setdiff(nms, tables)
 
-print(files)
 
 if(!args$do_not_create_df & (length(tables1) != 0 | !args$do_not_force_annot)){
 
@@ -139,10 +138,12 @@ quality_cutoff <- paste(args$quality_cutoff)
 
 ## Processing sample file
 
-tables2 <- setdiff(args$sample_table_name, tables)
 
-if(!args$do_not_create_df & (length(tables2) != 0 | !args$do_not_force_annot)){
-  sample_file <- read_delim(args$filename, delim = "\t")
+if(!args$do_not_create_df){
+
+  sample_file <- read_delim(args$filename, delim = "\t", na = c("","NA"))
+
+
   colnames(sample_file) <- tolower(colnames(sample_file))
 
   dbWriteTable(con, args$sample_table_name, sample_file, overwrite = T)
@@ -157,8 +158,11 @@ if(!args$do_not_create_df & (length(tables2) != 0 | !args$do_not_force_annot)){
 
 syndrome_overlaps <- dbGetQuery(con, glue(overlap_syndrome, sample_table = args$sample_table_name, filter = filter, qcoff = quality_cutoff))
 
-dbExecute(con, "drop table if exists gene_snp_annot")
-dbExecute(con, glue(gene_annotation,sample_table = args$sample_table_name, qcoff = quality_cutoff))
+if(!args$do_not_create_df){
+  dbExecute(con, "drop table if exists gene_snp_annot")
+  dbExecute(con, glue(gene_annotation,sample_table = args$sample_table_name, qcoff = quality_cutoff))
+}
+
 
 annotated_ddg2p <- dbGetQuery(con, glue(overlap_ddg2p, filter = filter))
 
@@ -236,7 +240,7 @@ cowplot::plot_grid(
   pie_2,
   hist_1,
   hist_2,
-  nrow = 2, ncol = 2, align = "hv"
+  nrow = 2, ncol = 2, align = "h"
 ) %>% ggsave(filename = paste0(args$out_prefix,"_summary_plots.pdf"), device = "pdf", width = 10, height = 10)
 
 ## Render the report
