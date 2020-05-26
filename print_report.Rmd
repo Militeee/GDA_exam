@@ -12,7 +12,7 @@ require(formattable,  quietly = T)
 require(knitr, quietly = T)
 
 
-load("tmp.RData")
+load("tables.RData")
 
 annot_list <- list(syndrome = syndrome_overlaps, ddg2p = annotated_ddg2p, 
                 omim = annotated_morbidmap, clingen = annotated_clingen)
@@ -23,13 +23,15 @@ annot_string <- c("syndrome", "ddg2p", "omim", "clingen")
 
 tot_overlap <- Reduce(list(annotated_ddg2p$`perc overlap`, annotated_morbidmap$`perc overlap`, annotated_clingen$`perc overlap`, syndrome_overlaps$`perc overlap`), f = union)
 
-sample_cnv_col <- color_tile("lightblue", "red") (unique(sample_file$`cnv value`))
+sample_cnv_col <- color_tile("lightblue", "red") (unique(sample_file_filtered$`cnv value`))
 
-names(sample_cnv_col) <- unique(sample_file$`cnv value`)
+names(sample_cnv_col) <- unique(sample_file_filtered$`cnv value`)
 
 sample_perc_col <- color_tile("#DeF7E9", "#71CA97")(percent(tot_overlap) / 100 , d = 0)
 
 names(sample_perc_col) <- unique(tot_overlap)
+
+rejected <- setdiff(sample_file$`sample id`, sample_file_filtered$`sample id`)
 
 # for each sample 
 
@@ -38,8 +40,13 @@ for(sample in mixedsort(unique(sample_file$`sample id`), decreasing = T)){
   cat("  \n")  
   annot_sample <- lapply(annot_list, function(x) {x %>% filter(`sample id` == sample)})
   annot_mask <- sapply(annot_sample, function(x) {nrow(x) != 0})
-  # if no annotation
-  if(sum(annot_mask) == 0){
+  # if filtered
+  if(sample %in% rejected){
+    cat(paste0("SNP completely filtered"), sep = "")
+    cat("  \n") 
+    cat("  \n") 
+    #if not annotated 
+  } else if(sum(annot_mask) == 0){
     cat(paste0("SNP does not intersect with annotation datasets"), sep = "")
     cat("  \n") 
     cat("  \n") 

@@ -27,29 +27,32 @@ gene_annotation = "
                 	 ((upper(st.range * gn.range) - lower(st.range * gn.range))::numeric / (upper(gn.range) - lower(gn.range)) * 100) as \"perc overlap\",
                 	 st.\"comment\"
                 	 from {sample_table} as st inner join gene_annotations as gn on st.\"chr\"  = gn.\"chr\"
-                	 where st.range && gn.range and st.\"cnv conf\" >= {qcoff}
+                	 where st.range && gn.range and st.\"cnv conf\" >= {qcoff}  and ({filter})
                 	)"
 
 overlap_ddg2p = " select dd.\"gene_symbol\", st.\"chr\",st.\"sample id\", st.\"perc overlap\", dd.\"allelic_requirement\",dd.\"ddd.category\", st.\"cnv value\", dd.\"organ.specificity.list\", st.\"comment\"
                   from  gene_snp_annot as st inner join ddg2p as dd on st.\"gene name\" = dd.\"gene_symbol\"
-                  where {filter}
                 "
 
 overlap_clingen = "
                   select cg.\"symbol\", st.\"chr\",st.\"sample id\", st.\"perc overlap\", cg.\"haploinsufficiency\",cg.\"triplosensitivity\", st.\"cnv value\", cg.\"online_report\", st.\"comment\"
                   from  gene_snp_annot as st inner join clingen_dosage as cg on st.\"gene name\" = cg.\"symbol\"
-                  where {filter}
                   "
 overlap_OMIM = "
                   select ph.\"symbol\", st.\"chr\",st.\"start\", st.\"end\", st.\"gene_start\", st.\"gene_end\",st.\"sample id\", st.\"perc overlap\", ph.\"phenotype\", st.\"cnv value\", st.\"comment\"
                   from  gene_snp_annot as st inner join morbidmap_ok as ph on st.\"gene name\" = ph.\"symbol\"
-                  where {filter}
                "
 
 get_sample = "
               select *
               from {sample_table}
             "
+
+get_sample_filt = "
+                    select *
+                    from {sample_table} as st
+                    where st.\"cnv conf\" >= {qcoff}  and ({filter})
+                  "
 
 ## Parsing arguments
 
@@ -70,6 +73,8 @@ parser$add_argument("-stn","--sample-table-name", type = "character", default = 
 parser$add_argument("--do-not-create-df", action="store_true", default = FALSE , help = "Don't write or create any table on the database, just read")
 parser$add_argument("--no-filter-diploid-X", action="store_true", default = FALSE , help = "Do not filter samples with CNV value = 2 on the X chromosome")
 parser$add_argument("-gv","--genome-version", type= "character", default ="hg19", help = "Version of the ref [hg38 or hg19] genome to be used for gene position")
+parser$add_argument("--custom-filter", type= "character", default =NULL, help = "A custom filter for the sample file")
+parser$add_argument("--save-tables", action= "store_true", default =FALSE, help = "Save an RData object with the results of the queries")
 
 
 args <- parser$parse_args()
@@ -124,16 +129,18 @@ if(!args$do_not_create_df & (length(tables1) != 0 | !args$do_not_force_annot)){
 
 }
 
+if(is.null(args$custom_filter)){
+  if(args$no_filter_diploid_X){
 
-if(args$no_filter_diploid_X){
+      filter = "st.\"cnv value\" <> 2  or st.chr = 'X'"
 
-    filter = "st.\"cnv value\" <> 2  or st.chr = 'X'"
+    } else {
 
-  } else {
-
-    filter = " st.\"cnv value\" <> 2 "
+      filter = " st.\"cnv value\" <> 2 "
+    }
+} else {
+  filter = args$custom_filter
 }
-
 quality_cutoff <- paste(args$quality_cutoff)
 
 ## Processing sample file
@@ -160,52 +167,52 @@ syndrome_overlaps <- dbGetQuery(con, glue(overlap_syndrome, sample_table = args$
 
 if(!args$do_not_create_df){
   dbExecute(con, "drop table if exists gene_snp_annot")
-  dbExecute(con, glue(gene_annotation,sample_table = args$sample_table_name, qcoff = quality_cutoff))
+  dbExecute(con, glue(gene_annotation,sample_table = args$sample_table_name, qcoff = quality_cutoff, filter = filter))
 }
 
 
-annotated_ddg2p <- dbGetQuery(con, glue(overlap_ddg2p, filter = filter))
+annotated_ddg2p <- dbGetQuery(con, glue(overlap_ddg2p))
 
-annotated_clingen <- dbGetQuery(con, glue(overlap_clingen, filter = filter))
+annotated_clingen <- dbGetQuery(con, glue(overlap_clingen))
 
-annotated_morbidmap <- dbGetQuery(con, glue(overlap_OMIM, filter = filter))
+annotated_morbidmap <- dbGetQuery(con, glue(overlap_OMIM))
+
+sample_file_filtered <- dbGetQuery(con, glue(get_sample_filt,
+                                             sample_table = args$sample_table_name,
+                                             qcoff = quality_cutoff, filter = filter))
 
 ## Save datasets temporarly for rendering the report
 
-save(sample_file, syndrome_overlaps, annotated_ddg2p,
-      annotated_clingen, annotated_morbidmap,file = "tmp.RData")
+save(sample_file, sample_file_filtsered, syndrome_overlaps, annotated_ddg2p,
+      annotated_clingen, annotated_morbidmap,file = "tables.RData")
 
 ## Prepare datasets for the summary plot
 
 # DF for plotting the percentage of the different CNVs
 
-plt_data1 <- sample_file %>% {if(!args$no_filter_diploid_X) filter(., `cnv value` != 2) else .} %>% group_by(`cnv value`) %>%
+plt_data1 <- sample_file_filtered %>% group_by(`cnv value`) %>%
               summarize(counts = n()) %>% arrange(counts) %>% mutate(freq = counts/sum(counts), y_pos = cumsum(freq) - 0.4*freq)
 
 # DF for plotting the percentage of amplifications and deletions
 
-plt_data2 <- sample_file %>% {if(!args$no_filter_diploid_X) filter(., `cnv value` != 2) else .}  %>%
-                mutate(del_dup = if_else(`cnv value` > 2, "ampl", "del")) %>%
+plt_data2 <- sample_file_filtered %>% mutate(del_dup = if_else(`cnv value` > 2, "ampl", "del")) %>%
                   mutate(del_dup = if_else(`cnv value` == 2, "norm", del_dup)) %>% group_by(del_dup) %>%
                     summarize(counts = n()) %>% arrange(counts) %>%
                      mutate(freq = counts/sum(counts), y_pos = cumsum(freq) - 0.5*cumsum(freq))
 
 # DF for plotting the chrs prevalence of CNVs
 
-plt_data3 <- sample_file %>% {if(!args$no_filter_diploid_X) filter(., `cnv value` != 2) else .} %>%
-              group_by(chr) %>% summarize(counts = n())
-
-plt_data3$chr <- factor(plt_data3$chr, levels = mixedsort(plt_data3$chr))
+plt_data3 <- sample_file_filtered %>% group_by(chr) %>% summarize(counts = n()) %>%  mutate(chr = factor(.$chr, levels = mixedsort(.$chr)))
 
 
-sample_file_tmp <- sample_file %>% {if(!args$no_filter_diploid_X) filter(., `cnv value` != 2) else .}
+
 
 # DF for plotting the overlap sample ids and datasets
 
-plt_data4 <- data.frame(syndrome = length(intersect(sample_file_tmp$`sample id`, syndrome_overlaps$`sample id`)),
-                        ddg2p = length(intersect(sample_file_tmp$`sample id`, annotated_ddg2p$`sample id`)),
-                        omim = length(intersect(sample_file_tmp$`sample id`, annotated_morbidmap$`sample id`)),
-                        clingen = length(intersect(sample_file_tmp$`sample id`, annotated_clingen$`sample id`)))
+plt_data4 <- data.frame(syndrome = length(intersect(sample_file_filtered$`sample id`, syndrome_overlaps$`sample id`)),
+                        ddg2p = length(intersect(sample_file_filtered$`sample id`, annotated_ddg2p$`sample id`)),
+                        omim = length(intersect(sample_file_filtered$`sample id`, annotated_morbidmap$`sample id`)),
+                        clingen = length(intersect(sample_file_filtered$`sample id`, annotated_clingen$`sample id`)))
 
 plt_data4 <- plt_data4 %>% reshape2::melt()
 
@@ -248,7 +255,7 @@ cowplot::plot_grid(
 rmarkdown::render("print_report.Rmd", output_file = paste0(args$out_prefix,"_CNV_report.html"))
 
 ## Remove the temporary datasets
-
-system("rm tmp.RData")
+if(!args$save_tables)
+  system("rm tables.RData")
 
 quit()
