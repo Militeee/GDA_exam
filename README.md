@@ -43,7 +43,7 @@ Will produce two files names output_summary_plots.pdf with some summary plots an
 
 The script will automatically recreate the 4 tables every time, if you want just to add the necessary tables set the argument `--do-not-force-annot`, on the other hand if you have everything (also the input file) already on the database set `--do-not-create-df` and write the table name `-stn input_table_name_in_the_db`. (**remember that column names of the tables need to be lowercase**)
 
-The script filters out automatically any CNVs equal to 2. To deactivate this beahviour for the X chromosome set `--no-filter-diploid-X`. If you want more complex filters (ex on non mandatory columns)  you can write a custom filter after `--custom-filter`. **remember to escape ' with \\'**
+The script filters out automatically any CNVs equal to 2. To deactivate this beahviour for the X chromosome set `--no-filter-diploid-X`. If you want more complex filters (ex on non mandatory columns)  you can write a custom filter after `--custom-filter`. (**remember to escape ' with \\'**)
 
 For more information
 `Rscript generate_report.R --help`
