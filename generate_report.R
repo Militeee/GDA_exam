@@ -75,10 +75,12 @@ parser$add_argument("--no-filter-diploid-X", action="store_true", default = FALS
 parser$add_argument("-gv","--genome-version", type= "character", default ="hg19", help = "Version of the ref [hg38 or hg19] genome to be used for gene position")
 parser$add_argument("--custom-filter", type= "character", default =NULL, help = "A custom filter for the sample file")
 parser$add_argument("--save-tables", action= "store_true", default =FALSE, help = "Save an RData object with the results of the queries")
-
+parser$add_argument("--verbose", action= "store_true", default =FALSE, help ="Show output and warnings of functions")
 
 args <- parser$parse_args()
 
+
+suppressPackageStartupMessages({
 require(RPostgreSQL, quietly = T)
 require(tidyverse, quietly = T)
 require(glue, quietly = T)
@@ -87,9 +89,21 @@ require(rmarkdown, quietly = T)
 require(cowplot, quietly = T)
 require(gtools, quietly = T)
 require(scales, quietly = T)
-require(formattable, quietly = T)
+require(formattable, quietly = T)})
 
 ## Connecting to the db
+if(!args$verbose){
+  options(warn=-1)
+  col <- cols()
+} else{
+  col <- NULL
+}
+
+
+
+
+cat("Connecting to DB")
+cat("\n")
 
 con <- dbConnect(RPostgres::Postgres(), dbname = args$database, host=args$database_host, port=args$database_port, user=args$database_user, password= args$database_password)
 
@@ -97,6 +111,9 @@ con <- dbConnect(RPostgres::Postgres(), dbname = args$database, host=args$databa
 ## Make sure to not reload all the tables if the database when not neaded
 
 files <- dir(args$annotation_dir, full.names = T)
+
+if(!(args$genome_version %in% c("hg19", "hg38"))) stop("Genome version should be hg19 or hg38")
+
 files_no_hg <- grep(files, pattern = "hg", value = T, invert = T)
 files_hg <- grep(files, pattern = args$genome_version, value = T)
 files <- c(files_hg, files_no_hg)
@@ -111,13 +128,18 @@ tables1 <- setdiff(nms, tables)
 
 if(!args$do_not_create_df & (length(tables1) != 0 | !args$do_not_force_annot)){
 
+  cat("Reading and inserting annotation tables")
+  cat("\n")
+
   # create tables for the annotations
   for(i in seq_along(files)){
 
-    annot_df <- read_delim(files[i], delim = args$delim)
+    annot_df <- read_delim(files[i], delim = args$delim,col_types = col)
     colnames(annot_df) <- tolower(colnames(annot_df))
-    print(nms[i])
+    if(args$verbose)
+      cat(paste0("Reading ", nms[i], " \n"))
     dbWriteTable(con, nms[i], annot_df, overwrite = T)
+
 
     # add range if the table has the right columns
     if(all(c("start", "end", "chr")  %in% colnames(annot_df)) ){
@@ -146,28 +168,32 @@ quality_cutoff <- paste(args$quality_cutoff)
 ## Processing sample file
 
 
+cat("Processing sample table")
+cat("\n")
+
 if(!args$do_not_create_df){
 
-  sample_file <- read_delim(args$filename, delim = "\t", na = c("","NA"))
-
-
+  sample_file <- read_delim(args$filename, delim = "\t", na = c("","NA"), col_types = col)
   colnames(sample_file) <- tolower(colnames(sample_file))
 
   dbWriteTable(con, args$sample_table_name, sample_file, overwrite = T)
 
-  dbExecute(con, glue(alter_range, table = args$sample_table_name))
-  dbExecute(con, glue(range_update, table = args$sample_table_name))
+  k_ <- dbExecute(con, glue(alter_range, table = args$sample_table_name))
+  k_ <- dbExecute(con, glue(range_update, table = args$sample_table_name))
 } else {
   sample_file <- dbGetQuery(con, glue(get_sample, sample_table = args$sample_table_name))
 }
 
 ## Calculating overlappings
 
+cat("Calculating overlaps")
+cat("\n")
+
 syndrome_overlaps <- dbGetQuery(con, glue(overlap_syndrome, sample_table = args$sample_table_name, filter = filter, qcoff = quality_cutoff))
 
 if(!args$do_not_create_df){
-  dbExecute(con, "drop table if exists gene_snp_annot")
-  dbExecute(con, glue(gene_annotation,sample_table = args$sample_table_name, qcoff = quality_cutoff, filter = filter))
+  k_ <- dbExecute(con, "drop table if exists gene_snp_annot")
+  k_ <- dbExecute(con, glue(gene_annotation,sample_table = args$sample_table_name, qcoff = quality_cutoff, filter = filter))
 }
 
 
@@ -183,10 +209,16 @@ sample_file_filtered <- dbGetQuery(con, glue(get_sample_filt,
 
 ## Save datasets temporarly for rendering the report
 
+cat("Saving temporary file")
+cat("\n")
+
 save(sample_file, sample_file_filtered, syndrome_overlaps, annotated_ddg2p,
       annotated_clingen, annotated_morbidmap,file = "tables.RData")
 
 ## Prepare datasets for the summary plot
+
+cat("Plotting")
+cat("\n")
 
 # DF for plotting the percentage of the different CNVs
 
@@ -214,7 +246,7 @@ plt_data4 <- data.frame(syndrome = length(intersect(sample_file_filtered$`sample
                         omim = length(intersect(sample_file_filtered$`sample id`, annotated_morbidmap$`sample id`)),
                         clingen = length(intersect(sample_file_filtered$`sample id`, annotated_clingen$`sample id`)))
 
-plt_data4 <- plt_data4 %>% reshape2::melt()
+plt_data4 <- suppressMessages(plt_data4 %>% reshape2::melt())
 
 
 
@@ -252,10 +284,20 @@ cowplot::plot_grid(
 
 ## Render the report
 
-rmarkdown::render("print_report.Rmd", output_file = paste0(args$out_prefix,"_CNV_report.html"))
+cat("Generating report")
+cat("\n")
+
+rmarkdown::render("print_report.Rmd", output_file = paste0(args$out_prefix,"_CNV_report.html"), quiet = T)
+
+
+cat("Remove temporary files")
+cat("\n")
 
 ## Remove the temporary datasets
 if(!args$save_tables)
   system("rm tables.RData")
+
+cat("BYE!")
+cat("\n")
 
 quit()
