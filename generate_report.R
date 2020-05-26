@@ -183,7 +183,7 @@ sample_file_filtered <- dbGetQuery(con, glue(get_sample_filt,
 
 ## Save datasets temporarly for rendering the report
 
-save(sample_file, sample_file_filtsered, syndrome_overlaps, annotated_ddg2p,
+save(sample_file, sample_file_filtered, syndrome_overlaps, annotated_ddg2p,
       annotated_clingen, annotated_morbidmap,file = "tables.RData")
 
 ## Prepare datasets for the summary plot
